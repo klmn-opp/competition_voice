@@ -1,0 +1,74 @@
+{
+  "input_mode": "keyboard",
+  "push_to_talk": true,
+  "record_seconds": 2.0,
+  "sample_rate": 16000,
+  "microphone_index": null,
+  "vosk_model_path": "models/vosk-cn-small",
+  "tts_enabled": false,
+  "modbus": {
+    "host": "192.168.0.3",
+    "port": 502,
+    "dry_run": true,
+    "unit_id": 1,
+    "timeout_seconds": 2.0,
+    "local_bind_ip": null,
+    "auto_reconnect": true,
+    "wait_for_completion": true,
+    "ack_timeout_seconds": 5.0,
+    "done_timeout_seconds": 60.0,
+    "poll_interval_seconds": 0.2,
+    "registers": {
+      "command_id": 40016,
+      "seq": 40017,
+      "ack_seq": 40018,
+      "state": 40019,
+      "error_code": 40020
+    }
+  },
+  "commands": [
+    {
+      "intent": "PICK_STUD",
+      "command_id": 1,
+      "name": "螺柱",
+      "phrases": ["识别螺柱", "抓取螺柱", "安装螺柱", "开始螺柱"]
+    },
+    {
+      "intent": "PICK_NUT",
+      "command_id": 2,
+      "name": "螺母",
+      "phrases": ["识别螺母", "抓取螺母", "安装螺母", "开始螺母"]
+    },
+    {
+      "intent": "PICK_WASHER",
+      "command_id": 3,
+      "name": "平垫",
+      "phrases": ["识别平垫", "抓取平垫", "安装平垫", "开始平垫"]
+    },
+    {
+      "intent": "PICK_SPRING_WASHER",
+      "command_id": 4,
+      "name": "弹垫",
+      "enabled": false,
+      "phrases": ["识别弹垫", "抓取弹垫", "安装弹垫", "开始弹垫"]
+    },
+    {
+      "intent": "PICK_VALVE_BODY",
+      "command_id": 5,
+      "name": "上球阀",
+      "phrases": ["识别上球阀", "抓取上球阀", "安装阀体", "安装上球阀"]
+    },
+    {
+      "intent": "START_ASSEMBLY",
+      "command_id": 10,
+      "name": "完整装配",
+      "phrases": ["启动装配", "开始装配", "开始球阀装配", "执行总流程"]
+    },
+    {
+      "intent": "STOP",
+      "command_id": 99,
+      "name": "停止",
+      "phrases": ["停止", "退出", "结束任务", "停止任务"]
+    }
+  ]
+}

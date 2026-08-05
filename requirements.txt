@@ -1,0 +1,5 @@
+numpy>=1.21
+sounddevice>=0.4
+vosk>=0.3.45
+pyModbusTCP>=0.2.0
+pyttsx3>=2.90
