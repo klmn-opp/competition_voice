@@ -3,7 +3,7 @@
   "push_to_talk": true,
   "record_seconds": 2.0,
   "sample_rate": 16000,
-  "microphone_index": null,
+  "microphone_index": 11,
   "vosk_model": "small-cn",
   "use_vosk_grammar": false,
   "prompt_path": "prompt.md",
