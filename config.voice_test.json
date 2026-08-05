@@ -1,12 +1,12 @@
 {
-  "input_mode": "keyboard",
+  "input_mode": "vosk",
   "push_to_talk": true,
   "record_seconds": 2.0,
   "sample_rate": 16000,
   "microphone_index": null,
   "vosk_model_path": "models/vosk-cn-small",
   "prompt_path": "prompt.md",
-  "tts_enabled": false,
+  "tts_enabled": true,
   "modbus": {
     "host": "192.168.0.3",
     "port": 502,

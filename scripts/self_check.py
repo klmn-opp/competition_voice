@@ -31,6 +31,24 @@ def main() -> int:
             else:
                 print(f"OK   {phrase} -> {match.command_id} ({match.intent})")
 
+    fallback_cases = {
+        "螺丝": 1,
+        "抓螺丝": 1,
+        "螺帽": 2,
+        "拿螺帽": 2,
+        "垫片": 3,
+        "拿垫片": 3,
+        "阀体": 5,
+        "球阀装配": 10,
+    }
+    for text, expected_id in fallback_cases.items():
+        match = parser_.parse(text)
+        if match is None or match.command_id != expected_id:
+            failed = True
+            print(f"FAIL fallback {text}: expected {expected_id}, got {match}")
+        else:
+            print(f"OK   fallback {text} -> {match.command_id} ({match.intent})")
+
     return 1 if failed else 0
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any
 
 
 @dataclass(frozen=True)
@@ -46,6 +45,7 @@ class AppConfig:
     sample_rate: int
     microphone_index: int | None
     vosk_model_path: Path
+    prompt_path: Path
     tts_enabled: bool
     modbus: ModbusConfig
     commands: tuple[CommandConfig, ...]
@@ -79,7 +79,11 @@ def load_config(path: str | Path) -> AppConfig:
         registers=registers,
     )
 
-    commands = tuple(_load_command(item) for item in raw["commands"])
+    prompt_path = Path(str(raw.get("prompt_path", "prompt.md")))
+    if not prompt_path.is_absolute():
+        prompt_path = base_dir / prompt_path
+    commands = load_prompt_commands(prompt_path)
+
     model_path = Path(str(raw.get("vosk_model_path", "")))
     if not model_path.is_absolute():
         model_path = base_dir / model_path
@@ -91,6 +95,7 @@ def load_config(path: str | Path) -> AppConfig:
         sample_rate=int(raw.get("sample_rate", 16000)),
         microphone_index=raw.get("microphone_index"),
         vosk_model_path=model_path,
+        prompt_path=prompt_path,
         tts_enabled=bool(raw.get("tts_enabled", True)),
         modbus=modbus,
         commands=commands,
@@ -98,11 +103,39 @@ def load_config(path: str | Path) -> AppConfig:
     )
 
 
-def _load_command(item: dict[str, Any]) -> CommandConfig:
-    return CommandConfig(
-        intent=str(item["intent"]),
-        command_id=int(item["command_id"]),
-        name=str(item["name"]),
-        phrases=tuple(str(p) for p in item["phrases"]),
-        enabled=bool(item.get("enabled", True)),
-    )
+_COMMAND_META = {
+    "PICK_STUD": (1, "螺柱"),
+    "PICK_NUT": (2, "螺母"),
+    "PICK_WASHER": (3, "平垫"),
+    "PICK_SPRING_WASHER": (4, "弹垫"),
+    "PICK_VALVE_BODY": (5, "上球阀"),
+    "START_ASSEMBLY": (10, "完整装配"),
+    "STOP": (99, "停止"),
+}
+
+
+def load_prompt_commands(path: Path) -> tuple[CommandConfig, ...]:
+    commands: list[CommandConfig] = []
+    for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" not in line:
+            raise ValueError(f"{path}:{line_no} 格式错误，应该是 意图: 提示词1, 提示词2")
+        intent, phrase_text = line.split(":", 1)
+        intent = intent.strip()
+        if intent not in _COMMAND_META:
+            raise ValueError(f"{path}:{line_no} 未知意图: {intent}")
+        phrases = tuple(
+            part.strip()
+            for part in phrase_text.replace("，", ",").split(",")
+            if part.strip()
+        )
+        if not phrases:
+            raise ValueError(f"{path}:{line_no} 没有配置提示词")
+        command_id, name = _COMMAND_META[intent]
+        commands.append(CommandConfig(intent=intent, command_id=command_id, name=name, phrases=phrases))
+
+    if not commands:
+        raise ValueError(f"{path} 没有任何有效提示词")
+    return tuple(commands)

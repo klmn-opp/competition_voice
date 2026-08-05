@@ -30,6 +30,16 @@ _REPLACEMENTS = {
     "求": "球",
 }
 
+_KEYWORD_FALLBACKS = (
+    ("START_ASSEMBLY", 10, "完整装配", ("启动装配", "开始装配", "球阀装配", "总流程")),
+    ("STOP", 99, "停止", ("停止", "退出", "结束")),
+    ("PICK_STUD", 1, "螺柱", ("螺柱", "螺丝", "丝杆", "螺杆")),
+    ("PICK_NUT", 2, "螺母", ("螺母", "螺帽")),
+    ("PICK_WASHER", 3, "平垫", ("平垫", "垫片")),
+    ("PICK_SPRING_WASHER", 4, "弹垫", ("弹垫",)),
+    ("PICK_VALVE_BODY", 5, "上球阀", ("阀体", "上球阀", "球阀")),
+)
+
 
 @dataclass(frozen=True)
 class IntentMatch:
@@ -56,6 +66,10 @@ class IntentParser:
         if not normalized:
             return None
 
+        keyword_match = self._keyword_fallback(normalized)
+        if keyword_match is not None:
+            return keyword_match
+
         best: IntentMatch | None = None
         for cmd in self.commands:
             for phrase in cmd.phrases:
@@ -72,6 +86,22 @@ class IntentParser:
 
         if best and best.score >= self.min_score:
             return best
+        return None
+
+    def _keyword_fallback(self, normalized: str) -> IntentMatch | None:
+        enabled_intents = {cmd.intent for cmd in self.commands}
+        for intent, command_id, name, keywords in _KEYWORD_FALLBACKS:
+            if intent not in enabled_intents:
+                continue
+            for keyword in keywords:
+                if normalize_text(keyword) in normalized:
+                    return IntentMatch(
+                        intent=intent,
+                        command_id=command_id,
+                        name=name,
+                        phrase=keyword,
+                        score=0.95,
+                    )
         return None
 
     @staticmethod

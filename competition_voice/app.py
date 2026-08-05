@@ -28,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     print("比赛语音控制程序已启动。")
     print("零件编号: 螺柱=1, 螺母=2, 平垫=3, 弹垫=4, 阀体/上球阀=5, 完整装配=10")
     print(f"单寄存器模式: 写入 {config.modbus.registers.command_status}，完成模式={config.modbus.completion_mode}")
+    print(f"提示词文件: {config.prompt_path}")
+    print(f"输入模式: {config.input_mode}, 麦克风 index={config.microphone_index}")
     print("输入/说出停止、退出或 Ctrl+C 可结束程序。")
 
     if not link.connect():
