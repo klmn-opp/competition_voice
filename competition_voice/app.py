@@ -17,9 +17,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Force keyboard text input instead of speech recognition",
     )
+    parser.add_argument(
+        "--model",
+        choices=("small-cn", "cn", "multi-cn"),
+        help="Choose local Vosk model under models/",
+    )
     args = parser.parse_args(argv)
 
-    config = load_config(args.config)
+    config = load_config(args.config, model_override=args.model)
     intent_parser = IntentParser(config.commands)
     speaker = Speaker(config.tts_enabled)
     voice_input = _build_voice_input(config, intent_parser, force_keyboard=args.keyboard)
@@ -30,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"单寄存器模式: 写入 {config.modbus.registers.command_status}，完成模式={config.modbus.completion_mode}")
     print(f"提示词文件: {config.prompt_path}")
     print(f"输入模式: {config.input_mode}, 麦克风 index={config.microphone_index}")
+    print(f"语音模型: {config.vosk_model} -> {config.vosk_model_path}")
     print("输入/说出停止、退出或 Ctrl+C 可结束程序。")
 
     if not link.connect():
@@ -95,6 +101,7 @@ def _build_voice_input(
     return VoskVoiceInput(
         model_path=config.vosk_model_path,
         grammar_phrases=intent_parser.grammar_phrases(),
+        use_grammar=config.use_vosk_grammar,
         sample_rate=config.sample_rate,
         record_seconds=config.record_seconds,
         microphone_index=config.microphone_index,

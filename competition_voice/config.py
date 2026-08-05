@@ -44,7 +44,9 @@ class AppConfig:
     record_seconds: float
     sample_rate: int
     microphone_index: int | None
+    vosk_model: str
     vosk_model_path: Path
+    use_vosk_grammar: bool
     prompt_path: Path
     tts_enabled: bool
     modbus: ModbusConfig
@@ -52,7 +54,14 @@ class AppConfig:
     base_dir: Path
 
 
-def load_config(path: str | Path) -> AppConfig:
+VOSK_MODEL_DIRS = {
+    "small-cn": "vosk-model-small-cn-0.22",
+    "cn": "vosk-model-cn-0.22",
+    "multi-cn": "vosk-model-cn-kaldi-multicn-0.15",
+}
+
+
+def load_config(path: str | Path, model_override: str | None = None) -> AppConfig:
     config_path = Path(path).resolve()
     base_dir = config_path.parent
     raw = json.loads(config_path.read_text(encoding="utf-8"))
@@ -84,9 +93,17 @@ def load_config(path: str | Path) -> AppConfig:
         prompt_path = base_dir / prompt_path
     commands = load_prompt_commands(prompt_path)
 
-    model_path = Path(str(raw.get("vosk_model_path", "")))
-    if not model_path.is_absolute():
-        model_path = base_dir / model_path
+    model_name = str(model_override or raw.get("vosk_model", "small-cn"))
+    model_path_raw = raw.get("vosk_model_path")
+    if model_override or not model_path_raw:
+        if model_name not in VOSK_MODEL_DIRS:
+            known = ", ".join(sorted(VOSK_MODEL_DIRS))
+            raise ValueError(f"未知 Vosk 模型名称: {model_name}，可选: {known}")
+        model_path = base_dir / "models" / VOSK_MODEL_DIRS[model_name]
+    else:
+        model_path = Path(str(model_path_raw))
+        if not model_path.is_absolute():
+            model_path = base_dir / model_path
 
     return AppConfig(
         input_mode=str(raw.get("input_mode", "vosk")),
@@ -94,7 +111,9 @@ def load_config(path: str | Path) -> AppConfig:
         record_seconds=float(raw.get("record_seconds", 2.0)),
         sample_rate=int(raw.get("sample_rate", 16000)),
         microphone_index=raw.get("microphone_index"),
+        vosk_model=model_name,
         vosk_model_path=model_path,
+        use_vosk_grammar=bool(raw.get("use_vosk_grammar", False)),
         prompt_path=prompt_path,
         tts_enabled=bool(raw.get("tts_enabled", True)),
         modbus=modbus,

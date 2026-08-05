@@ -64,16 +64,41 @@ STOP: 停止, 退出, 结束任务
 
 ## Vosk 模型
 
-推荐使用小中文模型，例如 `vosk-model-small-cn-*`。下载后放到：
+推荐先使用小中文模型。可直接下载：
 
-```text
-competition_voice/models/vosk-cn-small
+```bash
+cd /home/klmn/gongye_yuyin/competition_voice
+bash scripts/download_models.sh small-cn
 ```
 
-然后在 `config.json` 里配置：
+也可以下载更大的模型做性能对比：
+
+```bash
+bash scripts/download_models.sh cn
+bash scripts/download_models.sh multi-cn
+```
+
+模型会放到 `models/`，该目录已被 `.gitignore` 忽略，不会提交进 git。
+
+默认使用：
 
 ```json
-"vosk_model_path": "models/vosk-cn-small"
+"vosk_model": "small-cn"
+```
+
+默认不启用 Vosk 自带 grammar 限制：
+
+```json
+"use_vosk_grammar": false
+```
+
+原因是中文小模型对整句 grammar 的词表支持有限；程序会先让 Vosk 做短句识别，再用 `prompt.md` 和关键词兜底做最终意图匹配。
+
+启动时可以临时切换：
+
+```bash
+bash scripts/run.sh --config config.voice_test.json --model cn
+bash scripts/run.sh --config config.voice_test.json --model multi-cn
 ```
 
 正式语音识别需要本地 Vosk 模型。没有模型时可以设置：

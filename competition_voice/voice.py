@@ -20,6 +20,7 @@ class VoskVoiceInput:
         self,
         model_path: Path,
         grammar_phrases: list[str],
+        use_grammar: bool,
         sample_rate: int,
         record_seconds: float,
         microphone_index: int | None,
@@ -36,7 +37,7 @@ class VoskVoiceInput:
         SetLogLevel(-1)
         self._model = Model(str(model_path))
         self._recognizer_cls = KaldiRecognizer
-        self._grammar = json.dumps(grammar_phrases, ensure_ascii=False)
+        self._grammar = json.dumps(grammar_phrases, ensure_ascii=False) if use_grammar else None
         self._sample_rate = sample_rate
         self._record_seconds = record_seconds
         self._microphone_index = microphone_index
@@ -62,7 +63,10 @@ class VoskVoiceInput:
         )
         sd.stop()
 
-        recognizer = self._recognizer_cls(self._model, self._sample_rate, self._grammar)
+        if self._grammar:
+            recognizer = self._recognizer_cls(self._model, self._sample_rate, self._grammar)
+        else:
+            recognizer = self._recognizer_cls(self._model, self._sample_rate)
         recognizer.AcceptWaveform(audio.tobytes())
         result = json.loads(recognizer.FinalResult())
         return str(result.get("text", "")).replace(" ", "").strip()
