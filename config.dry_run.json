@@ -15,15 +15,13 @@
     "local_bind_ip": null,
     "auto_reconnect": true,
     "wait_for_completion": true,
-    "ack_timeout_seconds": 5.0,
     "done_timeout_seconds": 60.0,
     "poll_interval_seconds": 0.2,
+    "completion_mode": "cleared_to_zero",
+    "done_value": 0,
+    "error_min_value": 900,
     "registers": {
-      "command_id": 40016,
-      "seq": 40017,
-      "ack_seq": 40018,
-      "state": 40019,
-      "error_code": 40020
+      "command_status": 40016
     }
   },
   "commands": [

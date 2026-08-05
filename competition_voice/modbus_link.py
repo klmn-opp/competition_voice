@@ -28,7 +28,7 @@ class ModbusCommandLink:
         self.config = config
         self._client: Any | None = None
         self._bound_socket: socket.socket | None = None
-        self._seq = 0
+        self._send_count = 0
 
     def connect(self) -> bool:
         if self.config.dry_run:
@@ -90,65 +90,64 @@ class ModbusCommandLink:
 
     def send_command(self, command_id: int) -> CommandResult:
         if self.config.dry_run:
-            self._seq = (self._seq % 32767) + 1
-            print(f"[Modbus] dry_run 写入 command_id={command_id}, seq={self._seq}")
-            return CommandResult(True, "dry_run 命令已模拟写入", self._seq, STATE_DONE)
+            self._send_count += 1
+            print(
+                f"[Modbus] dry_run 写入 {self.config.registers.command_status}={command_id}, "
+                f"count={self._send_count}"
+            )
+            return CommandResult(True, "dry_run 命令已模拟写入", self._send_count, STATE_DONE)
 
         if self._client is None and not self.connect():
-            return CommandResult(False, "无法连接 PLC/机器人 Modbus 服务", self._seq)
+            return CommandResult(False, "无法连接 PLC/机器人 Modbus 服务", self._send_count)
 
-        self._seq = (self._seq % 32767) + 1
-        seq = self._seq
+        self._send_count += 1
+        send_count = self._send_count
 
-        if not self._write_register(self.config.registers.command_id, command_id):
+        if not self._write_register(self.config.registers.command_status, command_id):
             if self._reconnect_once():
-                return self._send_after_reconnect(command_id, seq)
-            return CommandResult(False, "写入 command_id 失败", seq)
-
-        if not self._write_register(self.config.registers.seq, seq):
-            if self._reconnect_once():
-                return self._send_after_reconnect(command_id, seq)
-            return CommandResult(False, "写入 seq 失败", seq)
+                return self._send_after_reconnect(command_id, send_count)
+            return CommandResult(False, "写入命令寄存器失败", send_count)
 
         if not self.config.wait_for_completion:
-            return CommandResult(True, "命令已写入", seq)
+            return CommandResult(True, "命令已写入", send_count)
 
-        return self._wait_for_plc(seq)
+        return self._wait_for_single_register(command_id, send_count)
 
-    def _send_after_reconnect(self, command_id: int, seq: int) -> CommandResult:
-        if not self._write_register(self.config.registers.command_id, command_id):
-            return CommandResult(False, "重连后写入 command_id 失败", seq)
-        if not self._write_register(self.config.registers.seq, seq):
-            return CommandResult(False, "重连后写入 seq 失败", seq)
+    def _send_after_reconnect(self, command_id: int, send_count: int) -> CommandResult:
+        if not self._write_register(self.config.registers.command_status, command_id):
+            return CommandResult(False, "重连后写入命令寄存器失败", send_count)
         if not self.config.wait_for_completion:
-            return CommandResult(True, "命令已写入", seq)
-        return self._wait_for_plc(seq)
+            return CommandResult(True, "命令已写入", send_count)
+        return self._wait_for_single_register(command_id, send_count)
 
-    def _wait_for_plc(self, seq: int) -> CommandResult:
-        ack_deadline = time.time() + self.config.ack_timeout_seconds
-        done_deadline = time.time() + self.config.done_timeout_seconds
-        saw_ack = False
+    def _wait_for_single_register(self, command_id: int, send_count: int) -> CommandResult:
+        deadline = time.time() + self.config.done_timeout_seconds
+        while time.time() < deadline:
+            value = self._read_register(self.config.registers.command_status)
 
-        while time.time() < done_deadline:
-            ack_seq = self._read_register(self.config.registers.ack_seq)
-            state = self._read_register(self.config.registers.state)
+            if value is None:
+                time.sleep(self.config.poll_interval_seconds)
+                continue
 
-            if ack_seq == seq:
-                saw_ack = True
+            if value >= self.config.error_min_value:
+                return CommandResult(False, "PLC/机器人返回错误状态", send_count, STATE_ERROR, value)
 
-            if not saw_ack and time.time() > ack_deadline:
-                return CommandResult(False, "PLC 未在超时时间内确认接收", seq, state)
-
-            if saw_ack and state == STATE_DONE:
-                return CommandResult(True, "执行完成", seq, state)
-
-            if saw_ack and state == STATE_ERROR:
-                error_code = self._read_register(self.config.registers.error_code)
-                return CommandResult(False, "PLC/机器人返回错误", seq, state, error_code)
+            if self._is_done_value(value, command_id):
+                return CommandResult(True, "执行完成", send_count, STATE_DONE)
 
             time.sleep(self.config.poll_interval_seconds)
 
-        return CommandResult(False, "等待执行完成超时", seq)
+        return CommandResult(False, "等待执行完成超时", send_count)
+
+    def _is_done_value(self, value: int, command_id: int) -> bool:
+        mode = self.config.completion_mode
+        if mode == "cleared_to_zero":
+            return value == 0
+        if mode == "fixed_done_value":
+            return value == self.config.done_value
+        if mode == "done_offset_100":
+            return value == command_id + 100
+        raise RuntimeError(f"不支持的 completion_mode: {mode}")
 
     def _write_register(self, display_addr: int, value: int) -> bool:
         client = self._client

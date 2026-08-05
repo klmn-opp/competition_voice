@@ -77,7 +77,7 @@ bash scripts/run.sh --config config.dry_run.json
 
 它会使用键盘输入，并打印本该写入的 `command_id` 和 `seq`，不访问网络。
 
-## 启动
+## 启动方式
 
 ```bash
 cd competition_voice
@@ -85,6 +85,28 @@ bash scripts/run.sh
 ```
 
 运行后程序会常驻。默认按 Enter 开始一次录音，识别一条命令，写入 PLC，然后继续等待下一条命令。
+
+完整首次启动流程：
+
+```bash
+cd /home/klmn/gongye_yuyin/competition_voice
+bash scripts/setup_venv.sh
+bash scripts/run.sh
+```
+
+如果已经安装过依赖，之后只需要：
+
+```bash
+cd /home/klmn/gongye_yuyin/competition_voice
+bash scripts/run.sh
+```
+
+没有语音模型或 PLC 时，先用键盘 dry-run 验证：
+
+```bash
+cd /home/klmn/gongye_yuyin/competition_voice
+python3 -m competition_voice.app --config config.dry_run.json
+```
 
 ## Linux root 权限注意事项
 
@@ -94,37 +116,56 @@ bash scripts/run.sh
 
 如果必须本机开 Modbus server，建议改用 `1502` 这类高端口，或只给 Python 解释器授予绑定低端口能力。不要整场比赛直接用 root 跑机器人控制程序，避免误操作影响系统文件和设备权限。
 
-## PLC 寄存器握手
+## 单寄存器协议
 
-默认寄存器为展示地址：
-
-```text
-40016 command_id
-40017 seq
-40018 ack_seq
-40019 state
-40020 error_code
-```
-
-程序写入：
+当前按比赛现场限制，只使用一个寄存器，默认展示地址为：
 
 ```text
-command_id = 命令编号
-seq = 每次递增
+40016 command_status
 ```
 
-PLC 回写：
+PC 识别到语音命令后写入：
 
 ```text
-ack_seq = 已接收的 seq
-state = 0 空闲, 1 运行中, 2 完成, 3 错误
-error_code = 错误码
+1  = 螺柱
+2  = 螺母
+3  = 平垫
+4  = 弹垫
+5  = 阀体/上球阀
+10 = 完整装配流程
+99 = 停止
 ```
 
-如果 PLC 暂时只支持旧方案，可以在 `config.json` 中设置：
+默认完成方式为 `cleared_to_zero`：
+
+```text
+PLC/机器人检测到 40016 非 0 -> 读取动作编号并执行
+PLC/机器人执行中可以保持原动作编号
+PLC/机器人执行完成后写 40016 = 0
+PC 连续轮询读到 0 -> 判定完成并播报
+```
+
+也支持其他单寄存器完成编码，在 `config.json` 里改：
+
+```json
+"completion_mode": "fixed_done_value",
+"done_value": 100
+```
+
+表示 PLC 完成后统一写 `100`。
+
+或者：
+
+```json
+"completion_mode": "done_offset_100"
+```
+
+表示 PLC 完成后写 `100 + command_id`，例如螺柱完成写 `101`。
+
+如果 PLC 侧暂时不会回写完成状态，可以设置：
 
 ```json
 "wait_for_completion": false
 ```
 
-程序会只写 `40016`，不强制等待 `ack/state`。
+程序会只写 `40016`，不等待完成。

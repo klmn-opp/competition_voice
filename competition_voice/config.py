@@ -8,11 +8,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class RegisterConfig:
-    command_id: int
-    seq: int
-    ack_seq: int
-    state: int
-    error_code: int
+    command_status: int
 
 
 @dataclass(frozen=True)
@@ -25,9 +21,11 @@ class ModbusConfig:
     local_bind_ip: str | None
     auto_reconnect: bool
     wait_for_completion: bool
-    ack_timeout_seconds: float
     done_timeout_seconds: float
     poll_interval_seconds: float
+    completion_mode: str
+    done_value: int
+    error_min_value: int
     registers: RegisterConfig
 
 
@@ -62,11 +60,7 @@ def load_config(path: str | Path) -> AppConfig:
     modbus_raw = raw["modbus"]
     regs_raw = modbus_raw["registers"]
     registers = RegisterConfig(
-        command_id=int(regs_raw["command_id"]),
-        seq=int(regs_raw["seq"]),
-        ack_seq=int(regs_raw["ack_seq"]),
-        state=int(regs_raw["state"]),
-        error_code=int(regs_raw["error_code"]),
+        command_status=int(regs_raw["command_status"]),
     )
     modbus = ModbusConfig(
         host=str(modbus_raw["host"]),
@@ -77,9 +71,11 @@ def load_config(path: str | Path) -> AppConfig:
         local_bind_ip=modbus_raw.get("local_bind_ip"),
         auto_reconnect=bool(modbus_raw.get("auto_reconnect", True)),
         wait_for_completion=bool(modbus_raw.get("wait_for_completion", True)),
-        ack_timeout_seconds=float(modbus_raw.get("ack_timeout_seconds", 5.0)),
         done_timeout_seconds=float(modbus_raw.get("done_timeout_seconds", 60.0)),
         poll_interval_seconds=float(modbus_raw.get("poll_interval_seconds", 0.2)),
+        completion_mode=str(modbus_raw.get("completion_mode", "cleared_to_zero")),
+        done_value=int(modbus_raw.get("done_value", 0)),
+        error_min_value=int(modbus_raw.get("error_min_value", 900)),
         registers=registers,
     )
 
