@@ -27,6 +27,12 @@ def main() -> int:
     parser.add_argument("--vad-model", type=Path, default=DEFAULT_VAD_MODEL)
     parser.add_argument("--min-silence", type=float, default=0.35)
     parser.add_argument("--read-seconds", type=float, default=0.1)
+    parser.add_argument(
+        "--language",
+        default="zh",
+        choices=("zh", "en", "ja", "ko", "yue", "auto"),
+        help="SenseVoice language hint. Use zh to avoid Japanese/Korean auto-detection.",
+    )
     args = parser.parse_args()
 
     try:
@@ -63,6 +69,7 @@ def main() -> int:
         model=str(model_file),
         tokens=str(tokens_file),
         num_threads=args.num_threads,
+        language=args.language,
         use_itn=True,
         debug=False,
     )
@@ -78,7 +85,7 @@ def main() -> int:
     buffer = np.array([], dtype=np.float32)
     count = 0
 
-    print("已启动常驻监听。直接说话即可，Ctrl+C 退出。")
+    print(f"已启动常驻监听。直接说话即可，Ctrl+C 退出。SenseVoice language={args.language}")
     print("本测试只打印识别文本和匹配动作，不写 PLC。")
 
     with sd.InputStream(
