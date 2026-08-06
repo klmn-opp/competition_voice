@@ -193,8 +193,7 @@ class ModbusCommandLink:
         return self._wait_for_single_register(command_id, send_count)
 
     def _wait_for_single_register(self, command_id: int, send_count: int) -> CommandResult:
-        deadline = time.time() + self.config.done_timeout_seconds
-        while time.time() < deadline:
+        while True:
             value = self._read_register(self.config.registers.command_status)
 
             if value is None:
@@ -204,22 +203,26 @@ class ModbusCommandLink:
             if value >= self.config.error_min_value:
                 return CommandResult(False, "PLC/机器人返回错误状态", send_count, STATE_ERROR, value)
 
-            if self._is_done_value(value, command_id):
-                return CommandResult(True, "执行完成", send_count, STATE_DONE)
+            if value == command_id:
+                return self._wait_for_reset_to_zero(send_count)
 
             time.sleep(self.config.poll_interval_seconds)
 
-        return CommandResult(False, "等待执行完成超时", send_count)
+    def _wait_for_reset_to_zero(self, send_count: int) -> CommandResult:
+        while True:
+            value = self._read_register(self.config.registers.command_status)
 
-    def _is_done_value(self, value: int, command_id: int) -> bool:
-        mode = self.config.completion_mode
-        if mode == "cleared_to_zero":
-            return value == 0
-        if mode == "fixed_done_value":
-            return value == self.config.done_value
-        if mode == "done_offset_100":
-            return value == command_id + 100
-        raise RuntimeError(f"不支持的 completion_mode: {mode}")
+            if value is None:
+                time.sleep(self.config.poll_interval_seconds)
+                continue
+
+            if value >= self.config.error_min_value:
+                return CommandResult(False, "PLC/机器人返回错误状态", send_count, STATE_ERROR, value)
+
+            if value == 0:
+                return CommandResult(True, "执行完成", send_count, STATE_DONE)
+
+            time.sleep(self.config.poll_interval_seconds)
 
     def _write_register(self, display_addr: int, value: int) -> bool:
         client = self._client
