@@ -46,7 +46,7 @@ cd competition_voice
 bash scripts/setup_venv.sh
 ```
 
-如果比赛现场不能联网，提前在可联网环境完成安装，并把整个 `competition_voice/.venv` 和 Vosk 中文小模型一起带到比赛电脑。
+如果比赛现场不能联网，提前在可联网环境完成安装，并把整个 `competition_voice/.venv` 和 `models/sherpa/` 一起带到比赛电脑。
 
 ## 提示词修改
 
@@ -62,52 +62,25 @@ STOP: 停止, 退出, 结束任务
 
 程序还带关键词兜底，即使只识别到 `螺丝`、`螺帽`、`垫片`、`阀体` 这类核心词，也会尽量映射到对应动作。
 
-## Vosk 模型
+## 语音模型
 
-推荐先使用小中文模型。可直接下载：
+正式和测试都默认使用本地 `sherpa-onnx + Silero VAD` 常驻识别链路：
 
-```bash
-cd /home/klmn/gongye_yuyin/competition_voice
-bash scripts/download_models.sh small-cn
+```text
+models/sherpa/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17
+models/sherpa/silero_vad.onnx
 ```
 
-也可以下载更大的模型做性能对比：
-
-```bash
-bash scripts/download_models.sh cn
-bash scripts/download_models.sh multi-cn
-```
-
-模型会放到 `models/`，该目录已被 `.gitignore` 忽略，不会提交进 git。
-
-默认使用：
+对应配置：
 
 ```json
-"vosk_model": "small-cn"
+"input_mode": "sherpa",
+"sherpa_language": "zh"
 ```
 
-默认不启用 Vosk 自带 grammar 限制：
+`sherpa_language` 建议固定为 `zh`，避免中文被识别成日文或韩文。
 
-```json
-"use_vosk_grammar": false
-```
-
-原因是中文小模型对整句 grammar 的词表支持有限；程序会先让 Vosk 做短句识别，再用 `prompt.md` 和关键词兜底做最终意图匹配。
-
-启动时可以临时切换：
-
-```bash
-bash scripts/run.sh --config config.voice_test.json --model cn
-bash scripts/run.sh --config config.voice_test.json --model multi-cn
-```
-
-正式语音识别需要本地 Vosk 模型。没有模型时可以设置：
-
-```json
-"input_mode": "keyboard"
-```
-
-用于离线调试通信和 PLC 逻辑。
+如果要回退到 Vosk，可把 `input_mode` 改回 `vosk`，再放置本地 Vosk 模型。
 
 没连接 PLC 但要测试语音功能，使用：
 
@@ -116,7 +89,7 @@ cd /home/klmn/gongye_yuyin/competition_voice
 bash scripts/run.sh --config config.voice_test.json
 ```
 
-这个配置仍然调用麦克风和 Vosk 模型，但 `dry_run=true`，不会连接 PLC，只打印本该写入 `40016` 的值。
+这个配置仍然调用麦克风和本地 sherpa 模型，但 `dry_run=true`，不会连接 PLC，只打印本该写入 `40016` 的值。
 
 ## 麦克风
 
@@ -141,7 +114,7 @@ bash scripts/list_mics.sh
 "microphone_index": 0
 ```
 
-程序录音参数默认是 `16000Hz`、单声道、每次录 `2.0s`。运行后默认需要按 Enter 才开始录音，这比一直监听更适合比赛现场，误触发少。
+程序录音参数默认是 `16000Hz`、单声道、持续监听。说完一句后由 VAD 切段，再送入本地识别。
 
 没有 PLC/机器人时，可以使用内置调试配置：
 
@@ -158,7 +131,7 @@ cd competition_voice
 bash scripts/run.sh
 ```
 
-运行后程序会常驻。默认按 Enter 开始一次录音，识别一条命令，写入 PLC，然后继续等待下一条命令。
+运行后程序会常驻，直接说话即可。识别一条命令，写入 PLC，然后继续等待下一条命令。
 
 完整首次启动流程：
 

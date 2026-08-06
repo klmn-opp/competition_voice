@@ -3,3 +3,4 @@ sounddevice>=0.4
 vosk>=0.3.45
 pyModbusTCP>=0.2.0
 pyttsx3>=2.90
+sherpa-onnx>=1.12.0

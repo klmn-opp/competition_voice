@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 import socket
 import time
 from typing import Any
@@ -40,42 +41,15 @@ class ModbusCommandLink:
         last_error = None
         for attempt in range(1, self._connect_attempts + 1):
             try:
-                from pyModbusTCP.client import ModbusClient
-
-                if self.config.local_bind_ip:
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    sock.bind((self.config.local_bind_ip, 0))
-                    sock.settimeout(self.config.timeout_seconds)
-                    sock.connect((self.config.host, self.config.port))
-                    client = ModbusClient(
-                        host=self.config.host,
-                        port=self.config.port,
-                        unit_id=self.config.unit_id,
-                        auto_open=False,
-                        auto_close=False,
-                        timeout=self.config.timeout_seconds,
+                client, bind_ip, bind_source = self._connect_once()
+                self._client = client
+                if bind_ip:
+                    print(
+                        f"[Modbus] 已连接 {self.config.host}:{self.config.port} "
+                        f"(bind {bind_ip}, {bind_source})"
                     )
-                    client._sock = sock
-                    client._is_open = True
-                    self._bound_socket = sock
-                    self._client = client
                 else:
-                    self._client = ModbusClient(
-                        host=self.config.host,
-                        port=self.config.port,
-                        unit_id=self.config.unit_id,
-                        auto_open=True,
-                        auto_close=False,
-                        timeout=self.config.timeout_seconds,
-                    )
-                    if not self._client.open():
-                        last_error = self._client.last_error_as_txt
-                        raise RuntimeError(last_error or "Modbus open() 返回失败")
-                print(
-                    f"[Modbus] 已连接 {self.config.host}:{self.config.port}"
-                    f"{f' (bind {self.config.local_bind_ip})' if self.config.local_bind_ip else ''}"
-                )
+                    print(f"[Modbus] 已连接 {self.config.host}:{self.config.port}")
                 return True
             except Exception as exc:
                 last_error = self._format_connect_error(exc)
@@ -85,6 +59,92 @@ class ModbusCommandLink:
                     time.sleep(0.5 * attempt)
         print(f"[Modbus] 连接失败，已重试 {self._connect_attempts} 次: {last_error}")
         return False
+
+    def _connect_once(self) -> tuple[Any, str | None, str | None]:
+        from pyModbusTCP.client import ModbusClient
+
+        bind_candidates: list[tuple[str, str]] = []
+        if self.config.local_bind_ip:
+            bind_candidates.append((self.config.local_bind_ip, "config"))
+        else:
+            detected = self._detect_local_bind_ip()
+            if detected:
+                bind_candidates.append((detected, "auto"))
+
+        last_error: Exception | None = None
+        for bind_ip, source in (*bind_candidates, (None, None)):
+            try:
+                if bind_ip is not None:
+                    client = self._connect_with_bind(ModbusClient, bind_ip)
+                    return client, bind_ip, source
+                client = ModbusClient(
+                    host=self.config.host,
+                    port=self.config.port,
+                    unit_id=self.config.unit_id,
+                    auto_open=True,
+                    auto_close=False,
+                    timeout=self.config.timeout_seconds,
+                )
+                if not client.open():
+                    last_error_txt = client.last_error_as_txt or "Modbus open() 返回失败"
+                    raise RuntimeError(last_error_txt)
+                return client, None, None
+            except Exception as exc:
+                last_error = exc
+                if bind_ip is not None:
+                    print(
+                        f"[Modbus] 绑定本机 {bind_ip} 连接失败，"
+                        f"准备尝试其他方式: {self._format_connect_error(exc)}"
+                    )
+                continue
+
+        raise RuntimeError(self._format_connect_error(last_error or RuntimeError("Modbus connect failed")))
+
+    def _connect_with_bind(self, client_cls: Any, bind_ip: str) -> Any:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((bind_ip, 0))
+            sock.settimeout(self.config.timeout_seconds)
+            sock.connect((self.config.host, self.config.port))
+            client = client_cls(
+                host=self.config.host,
+                port=self.config.port,
+                unit_id=self.config.unit_id,
+                auto_open=False,
+                auto_close=False,
+                timeout=self.config.timeout_seconds,
+            )
+            client._sock = sock
+            client._is_open = True
+            self._bound_socket = sock
+            return client
+        except Exception:
+            try:
+                sock.close()
+            except Exception:
+                pass
+            raise
+
+    def _detect_local_bind_ip(self) -> str | None:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.settimeout(self.config.timeout_seconds)
+            probe.connect((self.config.host, self.config.port))
+            local_ip = probe.getsockname()[0]
+            ipaddress.ip_address(local_ip)
+            if local_ip.startswith("127."):
+                return None
+            print(f"[Modbus] 自动检测到本机出站 IPv4: {local_ip}")
+            return local_ip
+        except Exception as exc:
+            print(f"[Modbus] 自动检测本机 IPv4 失败，改用系统默认路由: {exc}")
+            return None
+        finally:
+            try:
+                probe.close()
+            except Exception:
+                pass
 
     def close(self) -> None:
         if self._client is not None:

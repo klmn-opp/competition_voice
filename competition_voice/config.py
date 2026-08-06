@@ -44,6 +44,12 @@ class AppConfig:
     record_seconds: float
     sample_rate: int
     microphone_index: int | None
+    sherpa_model_dir: Path | None
+    sherpa_vad_model_path: Path | None
+    sherpa_language: str
+    sherpa_num_threads: int
+    sherpa_min_silence_duration: float
+    sherpa_read_seconds: float
     vosk_model: str
     vosk_model_path: Path
     use_vosk_grammar: bool
@@ -93,6 +99,22 @@ def load_config(path: str | Path, model_override: str | None = None) -> AppConfi
         prompt_path = base_dir / prompt_path
     commands = load_prompt_commands(prompt_path)
 
+    sherpa_model_dir_raw = raw.get("sherpa_model_dir")
+    if sherpa_model_dir_raw is None:
+        sherpa_model_dir = base_dir / "models" / "sherpa" / "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+    else:
+        sherpa_model_dir = Path(str(sherpa_model_dir_raw))
+        if not sherpa_model_dir.is_absolute():
+            sherpa_model_dir = base_dir / sherpa_model_dir
+
+    sherpa_vad_model_raw = raw.get("sherpa_vad_model_path")
+    if sherpa_vad_model_raw is None:
+        sherpa_vad_model_path = base_dir / "models" / "sherpa" / "silero_vad.onnx"
+    else:
+        sherpa_vad_model_path = Path(str(sherpa_vad_model_raw))
+        if not sherpa_vad_model_path.is_absolute():
+            sherpa_vad_model_path = base_dir / sherpa_vad_model_path
+
     model_name = str(model_override or raw.get("vosk_model", "small-cn"))
     model_path_raw = raw.get("vosk_model_path")
     if model_override or not model_path_raw:
@@ -111,6 +133,12 @@ def load_config(path: str | Path, model_override: str | None = None) -> AppConfi
         record_seconds=float(raw.get("record_seconds", 2.0)),
         sample_rate=int(raw.get("sample_rate", 16000)),
         microphone_index=raw.get("microphone_index"),
+        sherpa_model_dir=sherpa_model_dir,
+        sherpa_vad_model_path=sherpa_vad_model_path,
+        sherpa_language=str(raw.get("sherpa_language", "zh")),
+        sherpa_num_threads=int(raw.get("sherpa_num_threads", 2)),
+        sherpa_min_silence_duration=float(raw.get("sherpa_min_silence_duration", 0.35)),
+        sherpa_read_seconds=float(raw.get("sherpa_read_seconds", 0.1)),
         vosk_model=model_name,
         vosk_model_path=model_path,
         use_vosk_grammar=bool(raw.get("use_vosk_grammar", False)),

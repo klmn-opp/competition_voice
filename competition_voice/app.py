@@ -6,7 +6,7 @@ import sys
 from .config import AppConfig, load_config
 from .intent import IntentParser
 from .modbus_link import ModbusCommandLink
-from .voice import KeyboardInput, Speaker, VoskVoiceInput, VoiceInput
+from .voice import KeyboardInput, Speaker, SherpaVoiceInput, VoskVoiceInput, VoiceInput
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,7 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"单寄存器模式: 写入 {config.modbus.registers.command_status}，完成模式={config.modbus.completion_mode}")
     print(f"提示词文件: {config.prompt_path}")
     print(f"输入模式: {config.input_mode}, 麦克风 index={config.microphone_index}")
-    print(f"语音模型: {config.vosk_model} -> {config.vosk_model_path}")
+    print(f"Vosk 模型: {config.vosk_model} -> {config.vosk_model_path}")
+    if config.sherpa_model_dir is not None:
+        print(f"Sherpa 模型: {config.sherpa_model_dir}")
     print("输入/说出停止、退出或 Ctrl+C 可结束程序。")
 
     if not link.connect():
@@ -53,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[识别] {raw_text}")
             match = intent_parser.parse(raw_text)
             if match is None:
-                speaker.say("未匹配到比赛命令")
+                print("[播报] 未匹配到比赛命令")
                 continue
 
             print(
@@ -84,7 +86,6 @@ def main(argv: list[str] | None = None) -> int:
         print("\n用户中断，程序退出。")
     finally:
         link.close()
-        speaker.say("程序已退出")
 
     return 0
 
@@ -96,6 +97,19 @@ def _build_voice_input(
 ) -> VoiceInput:
     if force_keyboard or config.input_mode == "keyboard":
         return KeyboardInput()
+    if config.input_mode == "sherpa":
+        if config.sherpa_model_dir is None or config.sherpa_vad_model_path is None:
+            raise RuntimeError("sherpa 配置缺失模型路径")
+        return SherpaVoiceInput(
+            model_dir=config.sherpa_model_dir,
+            vad_model_path=config.sherpa_vad_model_path,
+            sample_rate=config.sample_rate,
+            microphone_index=config.microphone_index,
+            num_threads=config.sherpa_num_threads,
+            language=config.sherpa_language,
+            min_silence_duration=config.sherpa_min_silence_duration,
+            read_seconds=config.sherpa_read_seconds,
+        )
     if config.input_mode != "vosk":
         raise RuntimeError(f"不支持的 input_mode: {config.input_mode}")
     return VoskVoiceInput(
