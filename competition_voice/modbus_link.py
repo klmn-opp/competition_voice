@@ -29,6 +29,7 @@ class ModbusCommandLink:
         self._client: Any | None = None
         self._bound_socket: socket.socket | None = None
         self._send_count = 0
+        self._connect_attempts = 3
 
     def connect(self) -> bool:
         if self.config.dry_run:
@@ -36,43 +37,54 @@ class ModbusCommandLink:
             return True
 
         self.close()
-        try:
-            from pyModbusTCP.client import ModbusClient
+        last_error = None
+        for attempt in range(1, self._connect_attempts + 1):
+            try:
+                from pyModbusTCP.client import ModbusClient
 
-            if self.config.local_bind_ip:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind((self.config.local_bind_ip, 0))
-                sock.settimeout(self.config.timeout_seconds)
-                sock.connect((self.config.host, self.config.port))
-                client = ModbusClient(
-                    host=self.config.host,
-                    port=self.config.port,
-                    unit_id=self.config.unit_id,
-                    auto_open=False,
-                    auto_close=False,
-                    timeout=self.config.timeout_seconds,
+                if self.config.local_bind_ip:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    sock.bind((self.config.local_bind_ip, 0))
+                    sock.settimeout(self.config.timeout_seconds)
+                    sock.connect((self.config.host, self.config.port))
+                    client = ModbusClient(
+                        host=self.config.host,
+                        port=self.config.port,
+                        unit_id=self.config.unit_id,
+                        auto_open=False,
+                        auto_close=False,
+                        timeout=self.config.timeout_seconds,
+                    )
+                    client._sock = sock
+                    client._is_open = True
+                    self._bound_socket = sock
+                    self._client = client
+                else:
+                    self._client = ModbusClient(
+                        host=self.config.host,
+                        port=self.config.port,
+                        unit_id=self.config.unit_id,
+                        auto_open=True,
+                        auto_close=False,
+                        timeout=self.config.timeout_seconds,
+                    )
+                    if not self._client.open():
+                        last_error = self._client.last_error_as_txt
+                        raise RuntimeError(last_error or "Modbus open() 返回失败")
+                print(
+                    f"[Modbus] 已连接 {self.config.host}:{self.config.port}"
+                    f"{f' (bind {self.config.local_bind_ip})' if self.config.local_bind_ip else ''}"
                 )
-                client._sock = sock
-                client._is_open = True
-                self._bound_socket = sock
-                self._client = client
-            else:
-                self._client = ModbusClient(
-                    host=self.config.host,
-                    port=self.config.port,
-                    unit_id=self.config.unit_id,
-                    auto_open=True,
-                    auto_close=False,
-                    timeout=self.config.timeout_seconds,
-                )
-                if not self._client.open():
-                    return False
-            return True
-        except Exception as exc:
-            print(f"[Modbus] 连接失败: {exc}")
-            self.close()
-            return False
+                return True
+            except Exception as exc:
+                last_error = self._format_connect_error(exc)
+                print(f"[Modbus] 连接尝试 {attempt}/{self._connect_attempts} 失败: {last_error}")
+                self.close()
+                if attempt < self._connect_attempts:
+                    time.sleep(0.5 * attempt)
+        print(f"[Modbus] 连接失败，已重试 {self._connect_attempts} 次: {last_error}")
+        return False
 
     def close(self) -> None:
         if self._client is not None:
@@ -154,9 +166,15 @@ class ModbusCommandLink:
         if client is None:
             return False
         try:
-            return bool(client.write_single_register(_holding_offset(display_addr), value))
+            ok = bool(client.write_single_register(_holding_offset(display_addr), value))
+            if not ok:
+                print(
+                    f"[Modbus] 写寄存器 {display_addr} 失败: "
+                    f"{client.last_error_as_txt or client.last_except_as_txt or 'unknown'}"
+                )
+            return ok
         except Exception as exc:
-            print(f"[Modbus] 写寄存器 {display_addr} 失败: {exc}")
+            print(f"[Modbus] 写寄存器 {display_addr} 异常: {self._format_connect_error(exc)}")
             return False
 
     def _read_register(self, display_addr: int) -> int | None:
@@ -168,7 +186,7 @@ class ModbusCommandLink:
             if values:
                 return int(values[0])
         except Exception as exc:
-            print(f"[Modbus] 读寄存器 {display_addr} 失败: {exc}")
+            print(f"[Modbus] 读寄存器 {display_addr} 异常: {self._format_connect_error(exc)}")
         return None
 
     def _reconnect_once(self) -> bool:
@@ -176,6 +194,19 @@ class ModbusCommandLink:
             return False
         print("[Modbus] 尝试重连...")
         return self.connect()
+
+    def _format_connect_error(self, exc: Exception) -> str:
+        client = self._client
+        if client is not None:
+            parts = [
+                client.last_error_as_txt or "",
+                client.last_except_as_txt or "",
+                client.last_except_as_full_txt or "",
+            ]
+            parts = [part for part in parts if part]
+            if parts:
+                return " | ".join(parts)
+        return str(exc)
 
 
 def _holding_offset(display_addr: int) -> int:

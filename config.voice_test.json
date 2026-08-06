@@ -1,6 +1,6 @@
 {
   "input_mode": "vosk",
-  "push_to_talk": true,
+  "push_to_talk": false,
   "record_seconds": 2.0,
   "sample_rate": 16000,
   "microphone_index": 11,
